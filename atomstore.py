@@ -18,7 +18,7 @@
 #	- Clients are handed back the shorter SHA-512/128 address by default
 #	  because collisions will be very rare so the full hash can be left
 #	  to special collision exception handling.
-#	- Clients can choose atom-IDs to be returned in hex or base62 encoding.
+#	- Clients can choose atom-IDs to be returned in hex or base64 encoding.
 #
 # TODO
 #	- There is no validation of atom-ID lengths sent in client GETs yet.
