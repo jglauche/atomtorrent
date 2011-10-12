@@ -29,7 +29,9 @@
 #	- The URL to which POSTs are made is not used or checked.
 #	- GETs can only be sent to the plain atom-ID as there is no field extraction yet.
 #	- The '=' characters in some base64 filenames need figuring out, bug or OK?
+#	- There is no collision testing yet, although the framework for it is there.
 #	- It needs a configuration file for options.
+#	- It needs commandline handling, to choose a config file and enable debug etc.
 #	- It needs logging.
 #	- It needs stats.
 #	- It needs tests [I'm writing some - Morg].
@@ -74,7 +76,7 @@ def gen_directory_nodes(atom_id):
     # List comprehension followed by a join is the fastest way of doing this in Python
     return ''.join([atom_id[position]+'/' for position in range(directory_depth)])
 
-# Hex and base64 validators.  We only accept hex for now, extend this ASAP.
+# Hex and base64 validators.
 # Note that the atomstore doesn't care whether hex or base64 is used, it will always convert
 # whatever is supplied into its own preferred storage format, which is likely to be base64 to
 # keep names shorter when using plain files as storage.  However, it needs to be told which
