@@ -10,3 +10,4 @@ Design docs:
 
 Progress:
 - atomstore.py now implements a partial prototype of the design above.
+- tools directory now contains the start of tools for storing/fetching.
