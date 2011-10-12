@@ -31,6 +31,7 @@ end
 url = "http://localhost:5080"
 
 result = RestClient.post url, content
+puts result
 
 
 
