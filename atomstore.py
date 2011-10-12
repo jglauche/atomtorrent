@@ -31,6 +31,7 @@
 #	- The '=' characters in some base64 filenames need figuring out, bug or OK?
 #	- There is no collision testing yet, although the framework for it is there.
 #	- Not yet distinguishing 201 on initial create from 200 for re-store/already-exists.
+#	- The return format and choice of returned data needs to be given more thought.
 #	- It needs a configuration file for options to replace the hardwired config section.
 #	- It needs commandline handling, to choose a config file and enable debug etc.
 #	- It needs logging.
@@ -268,7 +269,6 @@ class AtomStore(BaseHTTPRequestHandler):
             post_data = self.rfile.read(post_length)
             if verbose: print 'Data[%d]={%s}' % (post_length, post_data.rstrip('\n\r'))
 
-            status = "OK"
             new_atom_id = store_and_hash(post_data, acenc_header)
             if new_atom_id == "":
                 response = "POST Status=WRITE_FAIL Length=%d\n" % post_length
@@ -279,7 +279,10 @@ class AtomStore(BaseHTTPRequestHandler):
 
             self.end_headers()
 
-            # Hand the client back a response containing the atom-ID of the stored atom
+            # Hand the client back a response containing the atom-ID of the stored atom.
+            # The return format needs much more careful thought.  Even though we're not
+            # implementing a webserver to run HTML websites, we may need some compatibility
+            # with frameworks to help them integrate with our back-end storage system.
             self.wfile.write(response)
             return
             
