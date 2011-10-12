@@ -14,11 +14,11 @@
 # CURRENT FUNCTIONALITY
 #	- Atoms can be stored with HTTP POST and fetched back with HTTP GET.
 #	- Atoms are stored using the base64 encoding of the full SHA-512 hash.
-#	- Stored atoms are also hard-linked to the SHA-512/128 trancated hash.
+#	- Stored atoms are also hard-linked to the SHA-512/128 truncated hash.
 #	- Clients are handed back the shorter SHA-512/128 address by default
-#	  because collisions will be very rare so the full has can be left
+#	  because collisions will be very rare so the full hash can be left
 #	  to special collision exception handling.
-#	- Clients can atom addresses to be returned in hex or base62 encoding.
+#	- Clients can choose atom-IDs to be returned in hex or base62 encoding.
 #
 # TODO
 #	- There is no validation of atom-ID lenghts yet.
