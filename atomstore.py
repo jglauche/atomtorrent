@@ -21,21 +21,26 @@
 #	- Clients can choose atom-IDs to be returned in hex or base62 encoding.
 #
 # TODO
-#	- There is no validation of atom-ID lenghts yet.
+#	- There is no validation of atom-ID lengths sent in client GETs yet.
 #	- GET using hex atom-ID is treated as base64, needs HTTP header to distinguish types.
 #	- There is no metadata handling yet.
 #	- There is no metatype handling yet.
 #	- There is no private/public key handling yet.
-#	- The URL to which POSTs are made is not used or checked.
+#	- The URL to which POSTs are written is not used or checked.
 #	- GETs can only be sent to the plain atom-ID as there is no field extraction yet.
 #	- The '=' characters in some base64 filenames need figuring out, bug or OK?
 #	- There is no collision testing yet, although the framework for it is there.
-#	- It needs a configuration file for options.
+#	- Not yet distinguishing 201 on initial create from 200 for re-store/already-exists.
+#	- It needs a configuration file for options to replace the hardwired config section.
 #	- It needs commandline handling, to choose a config file and enable debug etc.
 #	- It needs logging.
 #	- It needs stats.
 #	- It needs tests [I'm writing some - Morg].
 #	- I need sleep.
+#
+# REFERENCES
+#	1. FIPS PUB 180-3, Secure Hash Standard (SHS), 2008.
+#	2. NIST Special Publication 800-107, Recommendation for Applications Using Approved Hash Algorithms, 2009.
 #
 # AUTHORS
 #	Morgaine Dinova <morgaine.dinova@googlemail.com>
