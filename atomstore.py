@@ -68,7 +68,7 @@ import string
 # =====================================
 server_host = '0.0.0.0'
 port_number = 5080
-atomstore_path = "."	# This is the top of the tree of storage directories
+atomstore_path = "store/"	# This is the top of the tree of storage directories
 directory_depth = 4
 verbose = 1
 veryverbose = 0
