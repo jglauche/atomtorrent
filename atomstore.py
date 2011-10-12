@@ -305,6 +305,8 @@ def main():
     except KeyboardInterrupt:
         print 'AtomStore server aborting'
         server.socket.close()
+    except:
+        print 'AtomStore FAILED to start listener on %s:%d' % (server_host, port_number)
 
 if __name__ == '__main__':
     main()
