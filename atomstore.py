@@ -68,7 +68,7 @@ import string
 # =====================================
 server_host = '0.0.0.0'
 port_number = 5080
-atomstore_path = "store/"	# This is the top of the tree of storage directories
+atomstore_path = "store"	# This is the top of the tree of storage directories
 directory_depth = 4
 verbose = 1
 veryverbose = 0
@@ -198,11 +198,18 @@ def store_and_hash(post_data, accept_encoding_header):
 class AtomStore(BaseHTTPRequestHandler):
 
     def do_GET(self):
+        atom_id = self.path
         if verbose:
             print "==========================================="
-            print "Received GET"
+            print "Received GET %s" % atom_id
         try:
-            atom_id = self.path
+            # First of all, extract the atom-ID from the URL prefix.
+            dir_prefix = os.path.dirname(atom_id)
+            atom_id = os.path.basename(atom_id)
+            if verbose:
+                print "Atom-ID extracted from path in URI: {%s} + {%s}" % (dir_prefix, atom_id)
+            # Once we have a client header to tell the server whether the client's atom-ID is hex
+            # or base64, we'll be able to do some proper validation here.  It's very poor ATM.
             if valid_hex(atom_id) or valid_base64(atom_id):
                 # print 'headers={%s}' % self.headers
                 user_header = self.headers.getheader('User-agent')
@@ -214,6 +221,8 @@ class AtomStore(BaseHTTPRequestHandler):
 
                 directory_nodes = gen_directory_nodes(atom_id)
                 atom_path = atomstore_path + sep + directory_nodes + atom_id
+                if verbose:
+                    print "Looking up atom path {%s}" % atom_path
                 atom = open(atom_path)
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain')
@@ -223,7 +232,6 @@ class AtomStore(BaseHTTPRequestHandler):
                     self.wfile.write( base64.b64encode(file_data) ) # decode with base64.b64decode()
                 else:
                     self.wfile.write( file_data )
-                self.wfile.write( '\n' )
                 atom.close()
                 return
 
