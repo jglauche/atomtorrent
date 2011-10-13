@@ -66,12 +66,13 @@ import string
 # =====================================
 #                CONFIG
 # =====================================
-server_host = '0.0.0.0'
-port_number = 5080
-atomstore_path = "store"	# This is the top of the tree of storage directories
-directory_depth = 4
-verbose = 1
-veryverbose = 0
+server_host		= '0.0.0.0'	# IP address or hostname: the listener binds to this
+port_number		= 5080		# TCP port number or svc name: listener binds to this
+atomstore_path		= "store"	# Parent directory for the tree of storage directories
+directory_depth		= 4		# Depth of access tree, eg. 4 gives store/1/2/3/4/file
+default_return_base64	= True		# Use base64 as default Atom-ID encoding, else use hex
+verbose			= True		# Generate verbose diagnostic output, else be quiet
+veryverbose		= False		# Generate even more verbose output, else don't
 # =====================================
 
 # Make a translation table for mapping base64's '/' characters out of filenames
@@ -106,8 +107,8 @@ def valid_base64(atom_id):
     return 1
 
 #
-# This is rather inefficient because were're scanning the atom data once to compute SHA-512 hash
-# and once again to write the atom to filestore.  The production version should try to avoid this.
+# This is rather inefficient because were're scanning the atom data once to compute the SHA-512 hash
+# and once again to write the atom to filestore.  The production version should try to avoid a rescan.
 #
 # Atom-ID lengths:
 #	Hash/truncation		bits		binary-octets		hex-chars	base64-chars
@@ -115,7 +116,7 @@ def valid_base64(atom_id):
 #	SHA-512			512			64		128		85 + 2 bits
 #	SHA-512/128		128			16		32		21 + 2 bits
 #
-def store_and_hash(post_data, accept_encoding_header):
+def store_and_hash(post_data, return_base64):
     # HASHING
     hash512 = hashlib.sha512(post_data)
     sha_512 = hash512.digest()				# This is the actual binary SHA-512 hash digest
@@ -146,7 +147,7 @@ def store_and_hash(post_data, accept_encoding_header):
             os.makedirs(dir_path)
     except:
         print "Failed to create directory tree {%s}" % dir_path
-	return ""
+        return ""
 
     # And then write the atom to filestore in the inner directory with the base64 hash as filename
     write_filepath = dir_path + x64_hash512
@@ -160,7 +161,7 @@ def store_and_hash(post_data, accept_encoding_header):
             outfp.close()
     except:
         print "Failed to write atom file {%s}" % write_filepath
-	return ""
+        return ""
 
     # Finally, create a hard link with the 128-bit truncation of SHA-512 pointing at the full hash.
     # (Should we use a symlink instead?  What are the tradeoffs?)
@@ -172,15 +173,17 @@ def store_and_hash(post_data, accept_encoding_header):
             os.link(write_filepath, link128_path)
     except:
         print "Failed to link {%s} to {%s}" % (link128_path, write_filepath)
-        if accept_encoding_header == 'base64':
-            return b64_hash512	# Force use of the full SHA-512 has when creating the 128-bit link fails
+        # Force use of the full SHA-512 has when creating the 128-bit link fails
+        if return_base64:
+            return b64_hash512
         else:
-            return hex_hash512	# Force use of the full SHA-512 has when creating the 128-bit link fails
+            return hex_hash512
 
-    if accept_encoding_header == 'base64':
-        return b64_hash128	# We're not yet handing collisions so just returning 128-bit
+    # We're not handling collisions yet so just return 128-bit and pretend collisions can't happen
+    if return_base64:
+        return b64_hash128
     else:
-        return hex_hash128	# We're not yet handing collisions so just returning 128-bit
+        return hex_hash128
 
 #
 # Bog standard use of BaseHTTPRequestHandler here, nothing really worth explaining.
@@ -271,13 +274,22 @@ class AtomStore(BaseHTTPRequestHandler):
                 self.send_error(400, 'Multipart Not Implemented')
                 return
 
+            # Whether hex or base64 encoding is returned to the client by POST can be
+            # chosen by including "hex" or "base64" in the 'Accept-encoding' header.
+            # If the client makes no choice then the default config setting is used.
+            return_base64 = default_return_base64
+            if re.search(r'\bhex\b', acenc_header):
+                return_base64 = False
+            if re.search(r'\bbase64\b', acenc_header):	# If both present, base64 overrides
+                return_base64 = True
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
  
             post_data = self.rfile.read(post_length)
             if verbose: print 'Data[%d]={%s}' % (post_length, post_data.rstrip('\n\r'))
 
-            new_atom_id = store_and_hash(post_data, acenc_header)
+            # Store the atom indexed by its SHA-512 hash
+            new_atom_id = store_and_hash(post_data, return_base64)
             if new_atom_id == "":
                 response = "POST Status=WRITE_FAIL Length=%d\n" % post_length
             else:
