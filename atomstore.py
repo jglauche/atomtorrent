@@ -16,8 +16,8 @@
 #	- Atoms are stored using the base64 encoding of the full SHA-512 hash.
 #	- Adopted the "modified Base64 for filenames" standard variant of base64
 #	  because otherwise it is impossible to extract the Atom-ID from URIs.
-#	- Stored atoms are also hard-linked to the SHA-512/128 truncated hash.
-#	- Clients are handed back the shorter SHA-512/128 address by default
+#	- Stored atoms are also hard-linked to the SHA-512/120 truncated hash.
+#	- Clients are handed back the shorter SHA-512/120 address by default
 #	  because collisions will be very rare so the full hash can be left
 #	  to special collision exception handling.
 #	- Clients can choose atom-IDs to be returned in hex or base64 encoding.
@@ -110,38 +110,42 @@ def valid_base64(atom_id):
 #
 # Computes the SHA-512 hash of the POSTed atom data, encodes it into base64, translates the base64
 # into the standard "modified Base64 for filenames" variant, and stores the atom using this modified
-# base64 encoding as the filename.  A name made of the leading 22 characters is also linked to this
-# stored atom, which represents SHA-512/132 (128 is not evenly divisible by the 6 bits of base64).
-# Somewhat oddly we're calling this the "128-bit Atom-ID" despite actually being 132 bits. :P
+# base64 encoding as the filename.  A name made of the leading 20 characters is also linked to this
+# stored atom, which represents SHA-512/120 (128 is not evenly divisible by the 6 bits of base64).
+#
+# 120 bits was chosen because it is exactly divisible by 4, 6 and 8, and therefore avoids all padding
+# issues in hex, base64, and octets.  And, being less than 128 bits, it will fit within 4-word fields
+# intended to carry UUIDs and IPv6 addresses, which will be less problematic than 144 bits.
 #
 # The code is rather inefficient because were're scanning the atom data once to compute the SHA-512 hash
 # and once again to write the atom to filestore.  The production version should try to avoid a rescan.
 #
 # Atom-ID lengths:
-#	Hash/truncation		bits		binary-octets		hex-chars	base64-chars
-#	---------------		----		-------------		---------	------------
-#	SHA-512			512			64		128		85 + 2 bits
-#	SHA-512/132		132			16 + 4 bits	33		22
-#	SHA-512/128		128			16		32		21 + 2 bits
+#	Hash/truncation		bits	binary-octets		hex-chars	base64-chars	exact
+#	---------------		----	-------------		---------	------------	-----
+#	SHA-512			512		64		128		85 + 2 bits	-
+#	SHA-512/144		144		18		36		24		yes
+#	SHA-512/132		132		16 + 4 bits	33		22		-
+#	SHA-512/128		128		16		32		21 + 2 bits	-
+#	SHA-512/120		120		15		30		20		yes
 #
 def hash_and_store(post_data, return_base64):
     # HASHING
     hash512 = hashlib.sha512(post_data)
     sha_512 = hash512.digest()				# This is the actual binary SHA-512 hash digest
 
-    hex_hash512 = hash512.hexdigest()
-    hex_hash128 = hex_hash512[0:31]			# Leading 32 hex characters
+    hex_hash512 = hash512.hexdigest()			# Hex encoding of SHA-512 hash digest
+    hex_hash120 = hex_hash512[0:29]			# Leading 30 hex characters for SHA-512/120
 
-    # Proper base64 as the universal public atom address
+    # Generate base64 as the universal atom address, although it can't be used directly
     b64_hash512 = base64.b64encode( sha_512 )
-    b64_hash128 = b64_hash512[0:21]			# Leading 22 base64 characters
 
-    # Modified base64 for use as atom filenames
+    # Translate into "Modified Base64 for filenames", a well-known variant of base64
     x64_hash512 = string.translate(b64_hash512,trn_tab)	# This translates all '/' into '-'
-    x64_hash128 = x64_hash512[0:21]			# Leading 22 base64 characters
+    x64_hash120 = x64_hash512[0:19]			# Leading 20 base64 characters for SHA-512/120
 
     if verbose and (x64_hash512 != b64_hash512):
-        print "Base64 translation triggered for Atom-ID {%s}" % b64_hash512
+        print "Base64 translation triggered for Atom-ID {%s}" % b64_hash512	# Just informational
 
     #
     # STORAGE
@@ -162,7 +166,7 @@ def hash_and_store(post_data, return_base64):
 
     # And then write the atom to filestore in the inner directory with the base64 hash as filename
     write_filepath = dir_path + x64_hash512
-    link128_path = dir_path + x64_hash128
+    link120_path = dir_path + x64_hash120
     if verbose: print "Atom file path is {%s}" % write_filepath
     try:
         if not os.path.exists(write_filepath):
@@ -174,27 +178,29 @@ def hash_and_store(post_data, return_base64):
         print "Failed to write atom file {%s}" % write_filepath
         return ""
 
-    # Finally, create a hard link with the 128-bit truncation of SHA-512 pointing at the full hash.
+    # Finally, create a hard link with the 120-bit truncation of SHA-512 pointing at the full hash.
     # (Should we use a symlink instead?  What are the tradeoffs?)
-    link128_path = dir_path + x64_hash128
-    if verbose: print "Link128 file path is {%s}" % link128_path
+    link120_path = dir_path + x64_hash120
+    if verbose: print "Link120 file path is {%s}" % link120_path
     try:
-        if not os.path.exists(link128_path):
-            if verbose: print "Linking atom file {%s}" % link128_path
-            os.link(write_filepath, link128_path)
+        # No collision detection yet, so we're simply assuming that link presence means that this
+        # same atom is already stored, not admitting that the link might be to a different atom.
+        if not os.path.exists(link120_path):
+            if verbose: print "Linking atom file {%s}" % link120_path
+            os.link(write_filepath, link120_path)
     except:
-        print "Failed to link {%s} to {%s}" % (link128_path, write_filepath)
-        # Force use of the full SHA-512 has when creating the 128-bit link fails
+        print "Failed to link {%s} to {%s}" % (link120_path, write_filepath)
+        # Force use of the full SHA-512 hash when failed to create the 120-bit link
         if return_base64:
-            return b64_hash512
+            return x64_hash512
         else:
             return hex_hash512
 
-    # We're not handling collisions yet so just return 128-bit and pretend collisions can't happen
+    # We're not detecting collisions yet so just return 120-bit and pretend collisions can't happen
     if return_base64:
-        return b64_hash128
+        return x64_hash120
     else:
-        return hex_hash128
+        return hex_hash120
 
 #
 # Bog standard use of BaseHTTPRequestHandler here, nothing really worth explaining.
