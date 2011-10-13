@@ -14,6 +14,8 @@
 # CURRENT FUNCTIONALITY
 #	- Atoms can be stored with HTTP POST and fetched back with HTTP GET.
 #	- Atoms are stored using the base64 encoding of the full SHA-512 hash.
+#	- Adopted the "modified Base64 for filenames" standard variant of base64
+#	  because otherwise it is impossible to extract the Atom-ID from URIs.
 #	- Stored atoms are also hard-linked to the SHA-512/128 truncated hash.
 #	- Clients are handed back the shorter SHA-512/128 address by default
 #	  because collisions will be very rare so the full hash can be left
@@ -37,7 +39,6 @@
 #	- It needs logging.
 #	- It needs stats.
 #	- It needs tests [I'm writing some - Morg].
-#	- I need sleep.
 #
 # REFERENCES
 #	1. FIPS PUB 180-3, Secure Hash Standard (SHS), 2008.
@@ -107,16 +108,23 @@ def valid_base64(atom_id):
     return 1
 
 #
-# This is rather inefficient because were're scanning the atom data once to compute the SHA-512 hash
+# Computes the SHA-512 hash of the POSTed atom data, encodes it into base64, translates the base64
+# into the standard "modified Base64 for filenames" variant, and stores the atom using this modified
+# base64 encoding as the filename.  A name made of the leading 22 characters is also linked to this
+# stored atom, which represents SHA-512/132 (128 is not evenly divisible by the 6 bits of base64).
+# Somewhat oddly we're calling this the "128-bit Atom-ID" despite actually being 132 bits. :P
+#
+# The code is rather inefficient because were're scanning the atom data once to compute the SHA-512 hash
 # and once again to write the atom to filestore.  The production version should try to avoid a rescan.
 #
 # Atom-ID lengths:
 #	Hash/truncation		bits		binary-octets		hex-chars	base64-chars
 #	---------------		----		-------------		---------	------------
 #	SHA-512			512			64		128		85 + 2 bits
+#	SHA-512/132		132			16 + 4 bits	33		22
 #	SHA-512/128		128			16		32		21 + 2 bits
 #
-def store_and_hash(post_data, return_base64):
+def hash_and_store(post_data, return_base64):
     # HASHING
     hash512 = hashlib.sha512(post_data)
     sha_512 = hash512.digest()				# This is the actual binary SHA-512 hash digest
@@ -255,13 +263,13 @@ class AtomStore(BaseHTTPRequestHandler):
         # return 201 if new atom created, 200 if it's an idempotent "store same thing"
         try:
             if veryverbose:
-                print 'headers={%s}' % self.headers.rstrip('\n\r')
+                print 'headers={%s}' % self.headers
             user_header = self.headers.getheader('User-agent')
             host_header = self.headers.getheader('Host')
+            acenc_header = self.headers.getheader('Accept-encoding')
             accept_header = self.headers.getheader('Accept')
             length_header = self.headers.getheader('Content-length')
             ctype_header = self.headers.getheader('Content-type')
-            acenc_header = self.headers.getheader('Accept-encoding')
 
             post_length = int(length_header)
 
@@ -281,10 +289,13 @@ class AtomStore(BaseHTTPRequestHandler):
             # chosen by including "hex" or "base64" in the 'Accept-encoding' header.
             # If the client makes no choice then the default config setting is used.
             return_base64 = default_return_base64
-            if re.search(r'\bhex\b', acenc_header):
-                return_base64 = False
-            if re.search(r'\bbase64\b', acenc_header):	# If both present, base64 overrides
-                return_base64 = True
+            try:
+                if re.search(r'\bhex\b', acenc_header):
+                    return_base64 = False
+                if re.search(r'\bbase64\b', acenc_header):	# If both present, base64 overrides
+                    return_base64 = True
+            except:
+                pass
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
  
@@ -292,7 +303,7 @@ class AtomStore(BaseHTTPRequestHandler):
             if verbose: print 'Data[%d]={%s}' % (post_length, post_data.rstrip('\n\r'))
 
             # Store the atom indexed by its SHA-512 hash
-            new_atom_id = store_and_hash(post_data, return_base64)
+            new_atom_id = hash_and_store(post_data, return_base64)
             if new_atom_id == "":
                 response = "POST Status=WRITE_FAIL Length=%d\n" % post_length
             else:
