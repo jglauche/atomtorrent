@@ -27,7 +27,6 @@
 #	- There is no metatype handling yet.
 #	- There is no private/public key handling yet.
 #	- The URL to which POSTs are written is not used or checked.
-#	- GETs can only be sent to the plain atom-ID as there is no field extraction yet.
 #	- The '=' characters in some base64 filenames need figuring out, bug or OK?
 #	- There is no collision testing yet, although the framework for it is there.
 #	- Not yet distinguishing 201 on initial create from 200 for re-store/already-exists.
