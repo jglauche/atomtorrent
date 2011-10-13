@@ -72,7 +72,7 @@ port_number		= 5080		# TCP port number or svc name: listener binds to this
 atomstore_path		= "store"	# Parent directory for the tree of storage directories
 directory_depth		= 4		# Depth of access tree, eg. 4 gives store/1/2/3/4/file
 default_return_base64	= True		# Use base64 as default Atom-ID encoding, else use hex
-verbose			= True		# Generate verbose diagnostic output, else be quiet
+verbose			= False		# Generate verbose diagnostic output, else be quiet
 veryverbose		= False		# Generate even more verbose output, else don't
 # =====================================
 
