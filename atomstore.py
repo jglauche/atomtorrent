@@ -30,6 +30,7 @@
 #	- The '=' characters in some base64 filenames need figuring out, bug or OK?
 #	- There is no collision testing yet, although the framework for it is there.
 #	- Not yet distinguishing 201 on initial create from 200 for re-store/already-exists.
+#	- Add a "hash atom but don't store it" option so clients can just ask for the address.
 #	- The return format and choice of returned data needs to be given more thought.
 #	- It needs a configuration file for options to replace the hardwired config section.
 #	- It needs commandline handling, to choose a config file and enable debug etc.
@@ -130,6 +131,9 @@ def store_and_hash(post_data, return_base64):
     # Modified base64 for use as atom filenames
     x64_hash512 = string.translate(b64_hash512,trn_tab)	# This translates all '/' into '-'
     x64_hash128 = x64_hash512[0:21]			# Leading 22 base64 characters
+
+    if verbose and (x64_hash512 != b64_hash512):
+        print "Base64 translation triggered for Atom-ID {%s}" % b64_hash512
 
     #
     # STORAGE
