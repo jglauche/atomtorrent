@@ -25,13 +25,14 @@ pr2()
 
 usage()
 {
-	pr2 "Usage is:  $PROG  [-h] [-v]  [-r {count}]  [-H {URL-of-atomstore}]  {file(s)} ..."
+	pr2 "Usage is:  $PROG  [-h] [-v] [-w]  [-r {count}]  [-H {URL-of-atomstore}]  {file(s)} ..."
 	exit 1
 }
 
 ATOMSTORE_URL="http://localhost:5080/"
 DEBUGGING="false"
 VERBOSE="false"
+WRITE_ONLY="false"
 REPEAT_COUNT="1"
 
 while true
@@ -45,6 +46,9 @@ do
 		;;
 	-v)
 		VERBOSE="true"
+		;;
+	-w)
+		WRITE_ONLY="true"
 		;;
 	-r)
 		REPEAT_COUNT="$2"
@@ -97,15 +101,25 @@ test_file()
 {
 	FILE="$1"
 
-	ATOM_ID=`send_file "$FILE"`  &&  recv_file "$ATOM_ID" "$FILE"  &&  cmp "$FILE" "/tmp/XXX_${FILE}__XX" >/dev/null
+	ATOM_ID=`send_file "$FILE"`
 	STATUS="$?"
-	rm -f "/tmp/XXX_${FILE}__XX"
-	if [ "$STATUS" != 0 ]
+	if "$WRITE_ONLY"
 	then
-		pr2 "Failed compare for file {$FILE}"
-		return 1
+		return "$STATUS"
 	fi
-	return "$STATUS"
+
+	if [ "$STATUS" = 0 ]
+	then
+		recv_file "$ATOM_ID" "$FILE"  &&  cmp "$FILE" "/tmp/XXX_${FILE}__XX" >/dev/null
+		STATUS="$?"
+		rm -f "/tmp/XXX_${FILE}__XX"
+		if [ "$STATUS" != 0 ]
+		then
+			pr2 "Failed compare for file {$FILE}"
+			return 1
+		fi
+		return "$STATUS"
+	fi
 }
 
 if [ -z "$1" ]
