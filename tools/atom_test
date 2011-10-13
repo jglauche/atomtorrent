@@ -1,0 +1,124 @@
+#! /bin/sh
+#
+# FILE
+#	atom_test	--  Tests write/read integrity of an AtomTorrent atomstore
+#
+# DESCRIPTION
+#	Writes one or more files to an AtomTorrent atomstore, fetches them back by the
+#	Atom-IDs that are returned, and compares the originals against the fetched copies.
+#
+#	Uses the curl commandline utility -- see http://curl.haxx.se/
+#
+# AUTHORS
+#	Morgaine Dinova <morgaine.dinova@googlemail.com>
+#
+# LICENSE
+#	Public Domain
+#
+
+PROG=`basename $0`
+
+pr2()
+{
+	echo "$*"  1>&2
+}
+
+usage()
+{
+	pr2 "Usage is:  $PROG  [-h] [-v]  [-r {count}]  [-H {URL-of-atomstore}]  {file(s)} ..."
+	exit 1
+}
+
+ATOMSTORE_URL="http://localhost:5080/"
+DEBUGGING="false"
+VERBOSE="false"
+REPEAT_COUNT="1"
+
+while true
+do
+	case "$1" in
+	-h)
+		usage
+		;;
+	-d)
+		DEBUGGING="true"
+		;;
+	-v)
+		VERBOSE="true"
+		;;
+	-r)
+		REPEAT_COUNT="$2"
+		shift
+		;;
+	-H)
+		ATOMSTORE_URL="$2"
+		shift
+		;;
+	-*)
+		pr2 "$PROG:  bad flag {$1}"
+		usage
+		;;
+	*)
+		break
+		;;
+	esac
+	shift
+done
+
+send_file()
+{
+	FILE="$1"
+
+	ATOM_ID=`curl -s -X POST --data-binary "@$FILE" "$ATOMSTORE_URL"  |  sed -e '/^POST Status=OK/!d' -e 's/^.*Atom-ID=//'`
+	if [ -z "$ATOM_ID" ]
+	then
+		pr2 "Failed in POST for file {$FILE}"
+		return 1
+	fi
+	echo "$ATOM_ID"
+	return 0
+}
+
+recv_file()
+{
+	ATOM_ID="$1"
+	FILE="$2"
+
+	curl -s "${ATOMSTORE_URL}/${ATOM_ID}" > "/tmp/XXX_${FILE}__XX"
+	if [ "$?" != 0 ]
+	then
+		pr2 "Failed in GET  for file {$FILE}"
+		return 1
+	fi
+	return 0
+}
+
+test_file()
+{
+	FILE="$1"
+
+	ATOM_ID=`send_file "$FILE"`  &&  recv_file "$ATOM_ID" "$FILE"  &&  cmp "$FILE" "/tmp/XXX_${FILE}__XX" >/dev/null
+	STATUS="$?"
+	rm -f "/tmp/XXX_${FILE}__XX"
+	if [ "$STATUS" != 0 ]
+	then
+		pr2 "Failed compare for file {$FILE}"
+		return 1
+	fi
+	return "$STATUS"
+}
+
+if [ -z "$1" ]
+then
+	usage
+fi
+
+while [ "$REPEAT_COUNT" -ge 1 ]
+do
+	for FILE in "$@"
+	do
+		$VERBOSE && echo "$FILE:"
+		test_file "$FILE"
+	done
+	let REPEAT_COUNT=$((REPEAT_COUNT - 1))
+done
