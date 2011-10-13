@@ -96,14 +96,12 @@ def valid_hex(atom_id):
         return 0
     return 1
 
-def valid_base64(atom_id):
+def valid_base64(atom_id):	# NB. Validates for "Modified Base64 for filenames", ie. #64 = '-'
     # Using regex here only for brevity in the prototype.  Do it properly with arrays for production.
-    if re.search('[^0-9a-zA-Z+/]', atom_id):
+    if re.search('[^0-9a-zA-Z+-]', atom_id):
         # NOTE: We cannot use the 64th character of base64 '/' if we're going to store data
         # using the atom-ID as filename directly, since '/' is the Unix directory separator.
-        # Therefore after atom-ID validation (and extraction of the binary hash if needed),
-        # replace any '/' characters in the atom-ID by '-'.  (#63 and #64 become + and -).
-        # And make sure you remember to switch '-' back to '/' before sending it to user.
+        # Fortunately replacing '/' by '-' is a widespread modification of the original base64.
         return 0
     return 1
 
