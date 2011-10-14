@@ -51,6 +51,11 @@
 # DOCUMENTATION
 #	For now, see http://titanpad.com/0dhWwj5x5p (W.I.P.)
 #
+# BUGS
+#	- When a GET request fails and the client like "curl --fail" terminates the session uncleanly,
+#	  the BaseHTTPRequestHandler class library prints a traceback instead of raising an exception
+#	  when it finds the socket closed.  Although it recovers, it makes our stdout log look awful.
+#
 # LICENSE
 #	AGPLv3 or later
 #
@@ -64,9 +69,9 @@ import os
 import string
 
 # We'll need a config file to set up paths and other parameters.  Hardwiring it for now.
-# =====================================
+# =======================================
 #                CONFIG
-# =====================================
+# =======================================
 server_host		= '0.0.0.0'	# IP address or hostname: the listener binds to this
 port_number		= 5080		# TCP port number or svc name: listener binds to this
 atomstore_path		= "store"	# Parent directory for the tree of storage directories
@@ -74,7 +79,7 @@ directory_depth		= 4		# Depth of access tree, eg. 4 gives store/1/2/3/4/file
 default_return_base64	= True		# Use base64 as default Atom-ID encoding, else use hex
 verbose			= False		# Generate verbose diagnostic output, else be quiet
 veryverbose		= False		# Generate even more verbose output, else don't
-# =====================================
+# =======================================
 
 # Make a translation table for mapping base64's '/' characters out of filenames
 trn_tab = string.maketrans('/', '-')
@@ -219,55 +224,81 @@ class AtomStore(BaseHTTPRequestHandler):
         atom_id = self.path
         if verbose:
             print "==========================================="
-            print "Received GET %s" % atom_id
+            print "Received GET %s from client %s" % (atom_id, self.client_address)
+
         try:
             # First of all, extract the atom-ID from the URL prefix.
             dir_prefix = os.path.dirname(atom_id)
             atom_id = os.path.basename(atom_id)
             if verbose:
                 print "Atom-ID extracted from path in URI: {%s} + {%s}" % (dir_prefix, atom_id)
+
             # Once we have a client header to tell the server whether the client's atom-ID is hex
             # or base64, we'll be able to do some proper validation here.  It's very poor ATM.
-            if valid_hex(atom_id) or valid_base64(atom_id):
-                # print 'headers={%s}' % self.headers
-                user_header = self.headers.getheader('User-agent')
-                host_header = self.headers.getheader('Host')
-                accept_header = self.headers.getheader('Accept')
-                length_header = self.headers.getheader('Content-length')
-                ctype_header = self.headers.getheader('Content-type')
-                acenc_header = self.headers.getheader('Accept-encoding')
-
-                directory_nodes = gen_directory_nodes(atom_id)
-                atom_path = atomstore_path + sep + directory_nodes + atom_id
-                if verbose:
-                    print "Looking up atom path {%s}" % atom_path
-                atom = open(atom_path)
-                self.send_response(200)
-                self.send_header('Content-type', 'text/plain')
-                self.end_headers()
-                file_data = atom.read()
-                if acenc_header == 'base64':
-                    self.wfile.write( base64.b64encode(file_data) ) # decode with base64.b64decode()
-                else:
-                    self.wfile.write( file_data )
-                atom.close()
+            if not (valid_hex(atom_id) or valid_base64(atom_id)):
+                self.send_error(400, 'Invalid Atom-ID Syntax: %s' % atom_id)               
                 return
 
-            self.send_error(400, 'Invalid Atom-ID Syntax: %s' % atom_id)               
+            if veryverbose:
+                print 'Headers={\n%s}' % self.headers
+            user_header = self.headers.getheader('User-agent')
+            host_header = self.headers.getheader('Host')
+            accept_header = self.headers.getheader('Accept')
+            length_header = self.headers.getheader('Content-length')
+            ctype_header = self.headers.getheader('Content-type')
+            acenc_header = self.headers.getheader('Accept-encoding')
+
+            directory_nodes = gen_directory_nodes(atom_id)
+            atom_path = atomstore_path + sep + directory_nodes + atom_id
+            if verbose:
+                print "Looking up atom path {%s}" % atom_path
+
+            #=========================
+            try:
+                atom = open(atom_path)
+            except:
+                try:
+                    self.send_error(404, 'Atom Not Found: %s' % atom_id)
+                    return
+                except Exception, e:
+                    print "An unexpected exception was encountered: %s" % str(e)
+                    print "STUPID CLASS LIBRARY displays a traceback when it tries to write to a closed client socket"
+                    #
+                    # It's "curl -s --fail URL" that closes the socket badly on failure, but the library should handle it anyway.
+                    # How do I stop the unwanted traceback?
+                    #
+                    return
+                except:
+                    print "CANNOT HAPPEN"
+                    return
+            #=========================
+
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()					# End of RESPONSE headers
+            file_data = atom.read()
+            if acenc_header == 'base64':
+                self.wfile.write( base64.b64encode(file_data) )	# decode with base64.b64decode()
+            else:
+                self.wfile.write( file_data )
+            atom.close()
             return
-                
-        except IOError:
-            self.send_error(404, 'Atom Not Found: %s' % (directory_nodes + atom_id))
-     
+
+        except:
+            self.send_error(500, 'Exception - Internal Error GET-1')
+            return
+
 
     def do_POST(self):
+        post_target = self.path
         if verbose:
             print "==========================================="
-            print "Received POST"
+            print "Received POST %s from client %s" % (post_target, self.client_address)
+
         # return 201 if new atom created, 200 if it's an idempotent "store same thing"
         try:
             if veryverbose:
-                print 'headers={%s}' % self.headers
+                print 'Headers={\n%s}' % self.headers
             user_header = self.headers.getheader('User-agent')
             host_header = self.headers.getheader('Host')
             acenc_header = self.headers.getheader('Accept-encoding')
@@ -315,7 +346,7 @@ class AtomStore(BaseHTTPRequestHandler):
 
             if verbose: print "Response: {%s}" % response.rstrip('\n\r')
 
-            self.end_headers()
+            self.end_headers()					# End of RESPONSE headers
 
             # Hand the client back a response containing the atom-ID of the stored atom.
             # The return format needs much more careful thought.  Even though we're not
@@ -325,7 +356,8 @@ class AtomStore(BaseHTTPRequestHandler):
             return
             
         except:
-            self.send_error(500, 'Exception - Internal Error')
+            self.send_error(500, 'Exception - Internal Error POST-1')
+            return
 
 def main():
     try:
