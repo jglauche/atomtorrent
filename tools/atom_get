@@ -15,6 +15,7 @@
 #	multiple invocations are separated on stdout.
 #
 #	Uses the curl commandline utility -- see http://curl.haxx.se/
+#	and the wget commandline utility  -- see http://www.gnu.org/software/wget/
 #
 # AUTHORS
 #	Morgaine Dinova <morgaine.dinova@googlemail.com>
@@ -32,7 +33,7 @@ pr2()
 
 usage()
 {
-	pr2 "Usage is:  $PROG  [-h] [-v] [-vv] [-s]  [-H {URL-of-atomstore}]  {Atom-ID}  [{output-file}]"
+	pr2 "Usage is:  $PROG  [-h] [-v] [-s]  [-H {URL-of-atomstore}]  {Atom-ID}  [{output-file}]"
 	exit 1
 }
 
@@ -77,15 +78,29 @@ recv_file()
 	ATOM_ID="$1"
 	FILE="$2"
 
-	curl -s --fail "${ATOMSTORE_URL}/${ATOM_ID}" > "$OUT_BUFFER"
+	#
+	# curl has several bugs which trigger when GET fails:
+	# (i)  it doesn't return an error exit status so we can't tell that there is an error with any
+	#      certainty (parsing the returned HTML is not distinguishable from that HTML being returned
+	#      as a valid atom body).
+	# (ii) "curl --fail" does return the error exit status, but it closes its HTTP session uncleanly
+	#      and that triggers a bug in the BaseHTTPRequestHandler class library which results in a
+	#      very annoying traceback being called during exception handling.
+	# Since this isn't easily corrected, I'm not using curl for detecting bad GETs.
+	#
+	#	curl -s --fail "${ATOMSTORE_URL}/${ATOM_ID}" > "$OUT_BUFFER"
+	#
+	# Instead I'll use wget.
+	#
+	# Unfortunately, wget in turn has a problem, in that although it does return the error exit status
+	# properly, it doesn't output the body of the response from the web server on GET fail.  So, really
+	# ridiculously, I'm using wget to get the error exit status reliably and curl to get the body!!!
+	#
+	# Yuck, lol !!
+	#
+	wget -q -O - "${ATOMSTORE_URL}/${ATOM_ID}" > "$OUT_BUFFER"
 	if [ "$?" != 0 ]
 	then
-		# Yuck, lol !!
-		#
-		# curl doesn't return a process exit failure code when the server responds with a message
-		# of some kind even if it's a GET failure, so to deal with this situation we run the curl
-		# twice, once with --fail to get the error code and once without it to get the message.
-		#
 		curl -s "${ATOMSTORE_URL}/${ATOM_ID}" > "$OUT_BUFFER"
 		MSG1=`sed -e '/^<p>Error code [0-9]/!d' -e 's/^<p>Error code //' -e 's/\.$//'  "$OUT_BUFFER"`
 		MSG2=`sed -e '/^<p>Message: /!d' -e 's,^.*[/],,' -e 's/\.$//'  "$OUT_BUFFER"`
