@@ -1,0 +1,156 @@
+#! /bin/sh
+#
+# FILE
+#	atom_put	--  Uploads one or more files to an AtomTorrent atomstore
+#
+# DESCRIPTION
+#	A simple uploader of files to an AtomTorrent atomstore.
+#
+#	The atom IDs returned by each upload are output on stdout (errors to stderr) so
+#	that they can be fed into utilities that take atom IDs as input, eg. atom_get.
+#
+#	Other output formats are available too, notably -f for the full status line
+#	returned by the atomstore, and -l for a multi-field output akin to "ls -l".
+#	Also possibly useful are -s for silent running and -a for abort-on-failure.
+#
+#	Uses the curl commandline utility -- see http://curl.haxx.se/
+#
+# AUTHORS
+#	Morgaine Dinova <morgaine.dinova@googlemail.com>
+#
+# LICENSE
+#	Public Domain
+#
+
+PROG=`basename $0`
+
+pr2()
+{
+	echo "$*"  1>&2
+}
+
+usage()
+{
+	pr2 "Usage is:  $PROG  [-h] [-v] [-s] [-a] [-f] [-l]  [-H {URL-of-atomstore}]  {file(s)} ..."
+	exit 1
+}
+
+ATOMSTORE_URL="http://localhost:5080/"
+DEBUGGING="false"
+VERBOSE="false"
+SILENT="false"
+ABORT_ON_FAIL="false"
+SHOW_FULL_STATUS_MSG="false"
+SHOW_LONG_STATUS_MSG="false"
+
+while true
+do
+	case "$1" in
+	-h)
+		usage
+		;;
+	-d)
+		DEBUGGING="true"
+		;;
+	-v)
+		VERBOSE="true"
+		;;
+	-s)
+		SILENT="true"
+		;;
+	-a)
+		ABORT_ON_FAIL="true"
+		;;
+	-f)
+		SHOW_FULL_STATUS_MSG="true"
+		SHOW_LONG_STATUS_MSG="false"
+		SILENT="false"
+		;;
+	-l)
+		SHOW_LONG_STATUS_MSG="true"
+		SHOW_FULL_STATUS_MSG="false"
+		SILENT="false"
+		;;
+	-H)
+		ATOMSTORE_URL="$2"
+		shift
+		;;
+	-*)
+		pr2 "$PROG:  bad flag {$1}"
+		usage
+		;;
+	*)
+		break
+		;;
+	esac
+	shift
+done
+
+send_file()
+{
+	FILE="$1"
+
+	POST_STATUS=0
+
+	if [ \! -r "$FILE" ]
+	then
+		pr2 "$PROG: Can't find file {$FILE}, ignored"
+		POST_STATUS=1
+		return "$POST_STATUS"
+	fi
+
+	if [ \! -s "$FILE" ]
+	then
+		pr2 "$PROG: Empty file {$FILE}, ignored"
+		POST_STATUS=2
+		return "$POST_STATUS"
+	fi
+
+	RETURN_MSG=`curl -s -X POST --data-binary "@$FILE" "$ATOMSTORE_URL"`
+	if test -z "$RETURN_MSG"  ||  echo "$RETURN_MSG" | grep -v "^POST Status=OK" > /dev/null
+	then
+		pr2 "$PROG: POST failed for file {$FILE}"
+		POST_STATUS=3
+		return "$POST_STATUS"
+	fi
+
+	ATOM_ID=`echo "$RETURN_MSG"  |  sed -e '/^POST Status=OK/!d' -e 's/^.*Atom-ID=//'`
+	if [ -z "$ATOM_ID" ]
+	then
+		pr2 "$PROG: No Atom-ID received on POST for file {$FILE}"
+		POST_STATUS=4
+		return "$POST_STATUS"
+	fi
+
+	if "$SHOW_FULL_STATUS_MSG"
+	then
+		echo "${RETURN_MSG} ${FILE}"  \
+		|  perl -ne 'm/^(POST Status=\S+) (Length=\d+) (Atom-ID=\S+) (.*)$/ && printf("%-20s %-16s  %-s  File=%-s\n", $1, $2, $3, $4)'
+	elif "$SHOW_LONG_STATUS_MSG"
+	then
+		echo "${RETURN_MSG} ${FILE}"  \
+		|  perl -ne 'm/^POST Status=(\S+) Length=(\d+) Atom-ID=(\S+) (.*)$/ && printf("%-8s %8d  %-s  %-s\n", $1, $2, $3, $4)'
+	else
+		"$SILENT" || echo "$ATOM_ID"
+	fi
+	return 0
+}
+
+if [ -z "$1" ]
+then
+	usage
+fi
+
+for FILE in "$@"
+do
+	$VERBOSE && pr2 "$FILE:"
+	if send_file "$FILE"
+	then
+		:
+	else
+		if "$ABORT_ON_FAIL"
+		then
+			exit "$POST_STATUS"
+		fi
+	fi
+done

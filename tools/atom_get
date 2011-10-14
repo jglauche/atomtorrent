@@ -1,0 +1,146 @@
+#! /bin/sh
+#
+# FILE
+#	atom_get	--  Fetches an atom from an AtomTorrent atomstore by its Atom-ID
+#
+# DESCRIPTION
+#	Fetches an atom from an AtomTorrent atomstore by its Atom-ID, and saves or displays it.
+#
+#	If an output filename is provided as the 2nd non-flag argument then the fetched atom
+#	will be written to a file of that name.  If the output filename is omitted then the
+#	atom will be written to standard output, unless the -s flag ("silent") is given.
+#
+#	The -v flag provides some feedback on progress, either as "{Atom-ID} {output-file}" pairs
+#	or, when no output filename is provided, as a separator containing the Atom-ID so that
+#	multiple invocations are separated on stdout.
+#
+#	Uses the curl commandline utility -- see http://curl.haxx.se/
+#
+# AUTHORS
+#	Morgaine Dinova <morgaine.dinova@googlemail.com>
+#
+# LICENSE
+#	Public Domain
+#
+
+PROG=`basename $0`
+
+pr2()
+{
+	echo "$*"  1>&2
+}
+
+usage()
+{
+	pr2 "Usage is:  $PROG  [-h] [-v] [-vv] [-s]  [-H {URL-of-atomstore}]  {Atom-ID}  [{output-file}]"
+	exit 1
+}
+
+ATOMSTORE_URL="http://localhost:5080/"
+DEBUGGING="false"
+VERBOSE="false"
+SILENT="false"
+OUT_BUFFER="/tmp/XXX_${PROG}-output__XX"
+
+while true
+do
+	case "$1" in
+	-h)
+		usage
+		;;
+	-d)
+		DEBUGGING="true"
+		;;
+	-v)
+		VERBOSE="true"
+		;;
+	-s)
+		SILENT="true"
+		;;
+	-H)
+		ATOMSTORE_URL="$2"
+		shift
+		;;
+	-*)
+		pr2 "$PROG:  bad flag {$1}"
+		usage
+		;;
+	*)
+		break
+		;;
+	esac
+	shift
+done
+
+recv_file()
+{
+	ATOM_ID="$1"
+	FILE="$2"
+
+	curl -s --fail "${ATOMSTORE_URL}/${ATOM_ID}" > "$OUT_BUFFER"
+	if [ "$?" != 0 ]
+	then
+		# Yuck, lol !!
+		#
+		# curl doesn't return a process exit failure code when the server responds with a message
+		# of some kind even if it's a GET failure, so to deal with this situation we run the curl
+		# twice, once with --fail to get the error code and once without it to get the message.
+		#
+		curl -s "${ATOMSTORE_URL}/${ATOM_ID}" > "$OUT_BUFFER"
+		MSG1=`sed -e '/^<p>Error code [0-9]/!d' -e 's/^<p>Error code //' -e 's/\.$//'  "$OUT_BUFFER"`
+		MSG2=`sed -e '/^<p>Message: /!d' -e 's,^.*[/],,' -e 's/\.$//'  "$OUT_BUFFER"`
+		REASON="  -- Error code $MSG1, Atom not found"
+		#
+		# Flaming webbies, returning what should be machine status in HTML.
+		# Having to "scrape" error information is just plain ridiculous.
+		# And of course this will break as soon as they change text ... :-(
+		# Not impressed.
+		#
+		if [ -n "$FILE" ]
+		then
+			IDENTIFY=" for file {$FILE}"
+		else
+			IDENTIFY=""
+		fi
+		pr2 "$PROG:  FAILED to GET Atom-ID {$ATOM_ID}${IDENTIFY}${REASON}"
+		return 1
+	fi
+	return 0
+}
+
+if [ -z "$1" ]
+then
+	usage
+fi
+
+ATOM_ID="$1"
+if [ -n "$2" ]
+then
+	FILE="$2"
+	VERBOSE_IDENTIFIER="${ATOM_ID}  ${FILE} :"
+else
+	FILE=""
+	VERBOSE_IDENTIFIER="======================  ${ATOM_ID}  ======================"
+fi
+
+$VERBOSE && pr2 "${VERBOSE_IDENTIFIER}"
+
+if recv_file  "$1"  "$FILE"
+then
+	if [ -n "$FILE" ]
+	then
+		mv "$OUT_BUFFER"  "$FILE"  2>/dev/null
+		if [ "$?" != 0 ]
+		then
+			pr2 "$PROG:  Fetch of Atom-ID {$ATOM_ID} succeeded but FAILED in write to file {$FILE}"
+			return 2
+		fi
+	elif "$SILENT"
+	then
+		:
+	else
+		cat "$OUT_BUFFER"
+	fi
+
+	rm -f "$OUT_BUFFER"
+fi
